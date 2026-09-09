@@ -1,0 +1,15 @@
+{
+    //1. 사용할 아나콘다 가상환경의 파이썬 인터프리터 경로
+    "python.defaultInterpreterPath": "C:\\Users\\hyj10\\miniconda3\\envs\\myenv\\python.exe",
+    
+    //2. 터미널 생성 시 선택된 가상환경으로 자동 활성화 (base -> myenv으로 자동 전환)
+    "python.terminal.activateEnvironment": true,
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.profiles.windows": {
+        "PowerShell": {
+            "source": "PowerShell",
+            "icon": "terminal-powershell",
+            "args": ["-NoExit", "-Command", "conda activate myenv"]
+        }
+    }
+}
