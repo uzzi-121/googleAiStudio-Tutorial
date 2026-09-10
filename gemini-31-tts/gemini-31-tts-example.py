@@ -1,6 +1,7 @@
 # To run this code you need to install the following dependencies:
 # pip install google-genai
 
+#변경사항이 발생했습니다.
 import mimetypes
 import os
 import re
