@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube AI Search - 고정밀 STT & AI 영상 분석기</title>
+    <meta name="description" content="유튜브 영상의 고음질 오디오를 추출하여 Google Gemini로 고정밀 STT 및 영상 요약, 타임스탬프 탐색, 실시간 AI 질의응답을 제공하는 웹 애플리케이션">
+    
+    <!-- Google Fonts (Pretendard & Outfit) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Pretendard:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- 상단 헤더 네비게이션 -->
+    <header class="app-header">
+        <div class="header-container">
+            <div class="header-logo" id="header-logo-btn" title="YouTube AI Search 홈">
+                <span class="logo-icon">▶</span>
+                <span class="logo-title">YouTube</span>
+                <span class="logo-badge">AI Search</span>
+            </div>
+
+            <div class="search-form-wrap">
+                <form id="analyze-form" class="search-form" onsubmit="return false;">
+                    <div class="search-input-box">
+                        <span class="search-icon">🔍</span>
+                        <input 
+                            type="text" 
+                            id="yt-url-input" 
+                            class="search-input" 
+                            placeholder="유튜브 영상 주소(URL)를 입력하세요... (예: https://www.youtube.com/watch?v=...)" 
+                            autocomplete="off"
+                            required
+                        />
+                        <button type="button" id="clear-search-btn" class="clear-btn" title="지우기" style="display: none;">✕</button>
+                    </div>
+                    <button type="submit" id="analyze-btn" class="btn-primary analyze-btn">
+                        <span class="btn-text">🔍 분석</span>
+                        <span class="btn-spinner" style="display: none;"></span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <!-- 메인 컨테이너 -->
+    <main class="main-wrapper">
+        <!-- 1. 초기 웰컴 화면 (분석 전) -->
+        <section id="welcome-view" class="welcome-section">
+            <div class="welcome-card">
+                <div class="welcome-icon">📺</div>
+                <h1 class="welcome-title">YouTube AI Search에 오신 것을 환영합니다!</h1>
+                <p class="welcome-desc">
+                    상단 검색창에 분석하고 싶은 <b>유튜브 영상 링크(URL)</b>를 입력하고 <b>[🔍 분석]</b> 버튼을 눌러보세요.<br>
+                    영상 재생과 함께 <b>대시보드 요약, 타임스탬프 연동, AI 질의응답 챗봇</b>이 즉시 활성화됩니다.
+                </p>
+                <div class="example-links">
+                    <span class="example-label">💡 테스트 추천 예시:</span>
+                    <button type="button" class="example-chip" data-url="https://www.youtube.com/watch?v=kcc45Fp_jU8">
+                        AI 테크 세미나 영상
+                    </button>
+                    <button type="button" class="example-chip" data-url="https://www.youtube.com/watch?v=5qap5aO4i9A">
+                        Lofi 음악 및 토크
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 분석 로딩 상태 모달 / 오버레이 -->
+        <div id="loading-overlay" class="loading-overlay" style="display: none;">
+            <div class="loading-card">
+                <div class="loading-spinner-large"></div>
+                <h3 id="loading-title" class="loading-title">🎬 유튜브 영상을 분석 중입니다...</h3>
+                <div class="progress-steps">
+                    <div class="step-item" id="step-1">
+                        <span class="step-badge">1</span>
+                        <span class="step-label">유튜브 영상 메타데이터 및 오디오 다운로드 중...</span>
+                    </div>
+                    <div class="step-item" id="step-2">
+                        <span class="step-badge">2</span>
+                        <span class="step-label">Gemini 3.5 Transcribe로 정밀 STT 분석 중...</span>
+                    </div>
+                    <div class="step-item" id="step-3">
+                        <span class="step-badge">3</span>
+                        <span class="step-label">Gemini 3.6 Flash로 핵심 요약 및 예상 질문지 생성 중...</span>
+                    </div>
+                </div>
+                <p class="loading-tip">영상 길이에 따라 약 15초~40초 정도 소요될 수 있습니다.</p>
+            </div>
+        </div>
+
+        <!-- 3. 분석 결과 뷰 (좌측 60% 영상 : 우측 40% 3대 탭) -->
+        <div id="result-view" class="result-layout" style="display: none;">
+            <!-- 좌측 비디오 영역 -->
+            <section class="left-section">
+                <!-- 유튜브 커스텀 플레이어 컨테이너 -->
+                <div class="video-player-card">
+                    <div class="player-aspect-box">
+                        <div id="yt-player"></div>
+                    </div>
+                    
+                    <!-- 하단 커스텀 컨트롤 바 -->
+                    <div class="custom-ctrl-bar">
+                        <div class="ctrl-group left-ctrls">
+                            <button id="play-pause-btn" class="ctrl-btn play-btn" title="재생 / 일시정지">
+                                <span id="play-icon">▶</span>
+                            </button>
+                            <div class="vol-wrap">
+                                <button id="mute-btn" class="ctrl-btn" title="음소거 토글">🔊</button>
+                                <input type="range" id="vol-slider" class="vol-slider" min="0" max="100" value="100" title="음향 조절" />
+                                <span id="vol-label">100%</span>
+                            </div>
+                            <span id="time-label" class="time-label">00:00 / 00:00</span>
+                        </div>
+                        <div class="ctrl-group right-ctrls">
+                            <button id="cc-btn" class="cc-toggle-btn" title="자막 켜기/끄기">
+                                <span>💬 자막 OFF</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 영상 메타 정보 -->
+                <div class="video-meta-card">
+                    <h2 id="video-title" class="video-title">영상 제목</h2>
+                    <div class="video-channel-row">
+                        <div id="channel-avatar" class="channel-avatar">Y</div>
+                        <div class="channel-info">
+                            <div id="channel-name" class="channel-name">채널명</div>
+                            <div id="channel-sub" class="channel-sub">재생시간: 00:00</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 전체 트랜스크립트 아코디언 -->
+                <div class="accordion-card">
+                    <details class="accordion-details">
+                        <summary class="accordion-summary">
+                            <span>📝 영상 설명란 & 전체 트랜스크립트 전문 펼치기</span>
+                            <span class="accordion-arrow">▼</span>
+                        </summary>
+                        <div class="accordion-content">
+                            <div class="transcript-header">
+                                <h4>전체 전사문 (Full Transcript)</h4>
+                                <button type="button" id="copy-transcript-btn" class="btn-secondary btn-sm">📋 복사하기</button>
+                            </div>
+                            <textarea id="full-transcript-area" class="transcript-textarea" readonly></textarea>
+                            
+                            <div class="audio-player-wrap">
+                                <h4>🎧 추출된 고음질 오디오 직접 듣기:</h4>
+                                <audio id="extracted-audio" controls class="extracted-audio"></audio>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </section>
+
+            <!-- 우측 3대 탭 영역 -->
+            <section class="right-section">
+                <!-- 탭 네비게이션 헤더 -->
+                <div class="tabs-header">
+                    <button type="button" class="tab-btn active" data-tab="dashboard">📊 대시보드</button>
+                    <button type="button" class="tab-btn" data-tab="timestamps">⏱️ 타임스탬프</button>
+                    <button type="button" class="tab-btn" data-tab="chat">💬 AI 질의응답</button>
+                </div>
+
+                <!-- 탭 1: 대시보드 -->
+                <div id="tab-dashboard" class="tab-panel active">
+                    <div class="panel-section">
+                        <h3 class="section-title">📌 영상 핵심 요약</h3>
+                        <div id="summary-content" class="summary-content">
+                            <!-- JS로 불릿 포인트 렌더링 -->
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="panel-section">
+                        <h4 class="section-subtitle">🏷️ 주요 키워드</h4>
+                        <div id="keywords-content" class="keywords-content">
+                            <!-- JS로 키워드 뱃지 렌더링 -->
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="panel-section">
+                        <div class="metrics-grid">
+                            <div class="metric-box">
+                                <div id="metric-duration" class="metric-value">00:00</div>
+                                <div class="metric-label">총 영상 길이</div>
+                            </div>
+                            <div class="metric-box">
+                                <div id="metric-sentences" class="metric-value">0개</div>
+                                <div class="metric-label">추출된 문장 수</div>
+                            </div>
+                            <div class="metric-box">
+                                <div id="metric-speaker" class="metric-value">화자 1</div>
+                                <div class="metric-label">인식 화자</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="panel-section">
+                        <h4 class="section-subtitle">📥 자막 파일 다운로드</h4>
+                        <div class="download-btn-group">
+                            <button type="button" id="download-srt-btn" class="btn-download">
+                                <span>🎬 자막 파일 (.srt)</span>
+                            </button>
+                            <button type="button" id="download-txt-btn" class="btn-download">
+                                <span>📄 텍스트 파일 (.txt)</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 탭 2: 타임스탬프 -->
+                <div id="tab-timestamps" class="tab-panel">
+                    <div class="panel-section timestamps-header-section">
+                        <h3 class="section-title">⏱️ 문장별 타임스탬프</h3>
+                        <p class="section-caption">
+                            시간 버튼(<span class="code-badge">▶ 00:00</span>)이나 문장을 클릭하면 영상이 멈추지 않고 해당 위치로 즉시 이동합니다.
+                        </p>
+                        
+                        <div class="ts-search-wrap">
+                            <input 
+                                type="text" 
+                                id="ts-search-input" 
+                                class="ts-search-input" 
+                                placeholder="🔍 특정 단어나 문장 검색 (예: AI, 출시, 가격 등)"
+                            />
+                            <div class="ts-search-meta">
+                                <span id="ts-match-count">총 0개 문장</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="ts-list-container" class="ts-list-container">
+                        <!-- JS로 타임스탬프 행 동적 삽입 -->
+                    </div>
+                </div>
+
+                <!-- 탭 3: AI 질의응답 -->
+                <div id="tab-chat" class="tab-panel">
+                    <!-- 유튜브 AI 공식 스타일 카드 -->
+                    <div class="yt-ask-card">
+                        <div class="yt-ask-header">
+                            <span class="yt-ask-sparkle">✦</span>
+                            <span>이 동영상에 대해 물어보세요</span>
+                        </div>
+                        <div class="yt-ask-intro">
+                            안녕하세요. 시청 중인 콘텐츠가 궁금하신가요? 최선을 다해 도와드리겠습니다.<br><br>
+                            어떻게 질문해야 할지 모르겠다면 다음 예와 같이 질문해 보세요.
+                        </div>
+                    </div>
+
+                    <!-- 추천 질문 알약(Pill) 버튼 목록 (우측 정렬, 줄바꿈 온전 지원) -->
+                    <div id="suggested-questions-list" class="suggested-questions-container">
+                        <!-- JS로 알약 버튼 삽입 -->
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- 대화 메시지 기록 -->
+                    <div id="chat-messages-box" class="chat-messages-box">
+                        <div class="chat-msg assistant">
+                            <div class="msg-avatar">🤖</div>
+                            <div class="msg-bubble">
+                                위의 <b>추천 질문</b>을 클릭하시거나 아래 입력창에 직접 질문을 입력해 주시면 타임스탬프와 함께 자세히 답변해 드릴게요. 😊
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 대화 입력창 -->
+                    <form id="chat-form" class="chat-form" onsubmit="return false;">
+                        <div class="chat-input-wrap">
+                            <input 
+                                type="text" 
+                                id="chat-input" 
+                                class="chat-input" 
+                                placeholder="이 동영상에 대해 질문하세요... (예: 핵심 결론이 뭐야?, 가격이 얼마야?)"
+                                autocomplete="off"
+                            />
+                            <button type="submit" id="chat-send-btn" class="chat-send-btn" title="보내기">
+                                <span>전송</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
